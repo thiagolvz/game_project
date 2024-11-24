@@ -9,6 +9,8 @@
 #define MAX_ESTATISTICAS 100
 #define ARQUIVO_ESTATS "estatisticas.bin"
 #define NUM_FASES 5
+#define MAX_PALAVRA 100
+#define NUM_PROCEDURAL 5
 
 // Estrutura para armazenar as informações do jogador
 typedef struct {
@@ -41,10 +43,10 @@ int tentarLetra(char letra, char palavra[], char letrasDescobertas[], int tamanh
 int palavraCompleta(char letrasDescobertas[], int tamanho) {
     for (int i = 0; i < tamanho; i++) {
         if (letrasDescobertas[i] == '_') {
-            return 0;  // Ainda há letras não descobertas
+            return 0; // Ainda há letras não descobertas
         }
     }
-    return 1;  // Palavra completa
+    return 1; // Palavra completa
 }
 
 // Função para mostrar as estatísticas do jogador atual
@@ -58,10 +60,8 @@ void mostrarEstatisticas(Jogador jogadorAtual) {
     Jogador jogador;
     int encontrou = 0;
 
-    // Exibir as estatísticas apenas para o jogador atual
     while (fread(&jogador, sizeof(Jogador), 1, file)) {
         if (strcmp(jogador.nome, jogadorAtual.nome) == 0) {
-            // Se o nome do jogador atual coincidir com o nome salvo
             char dataStr[20];
             struct tm *tm_info = localtime(&jogador.data);
             strftime(dataStr, 20, "%d/%m/%Y %H:%M:%S", tm_info);
@@ -83,108 +83,125 @@ void mostrarEstatisticas(Jogador jogadorAtual) {
 void salvarEstatisticas(Jogador jogador) {
     FILE *file = fopen(ARQUIVO_ESTATS, "ab");
     if (file) {
-        jogador.data = time(NULL);  // Adiciona a data e hora do jogo
+        jogador.data = time(NULL); // Adiciona a data e hora do jogo
         fwrite(&jogador, sizeof(Jogador), 1, file);
         fclose(file);
     }
 }
 
-// Função para iniciar o jogo
+// Função para carregar palavras de arquivos específicos para cada fase
+int carregarPalavras(char palavras[NUM_FASES][MAX_PALAVRA]) {
+    for (int i = 0; i < NUM_FASES; i++) {
+        char nomeArquivo[MAX_PALAVRA];
+        snprintf(nomeArquivo, sizeof(nomeArquivo), "fase%d.txt", i + 1); // Cria o nome do arquivo (fase1.txt, fase2.txt, etc.)
+
+        FILE *file = fopen(nomeArquivo, "r");
+        if (!file) {
+            printf("Erro: Não foi possível abrir o arquivo %s.\n", nomeArquivo);
+            return 0; // Retorna 0 se algum arquivo não puder ser aberto
+        }
+
+        if (fscanf(file, "%s", palavras[i]) != 1) {
+            printf("Erro: Não foi possível carregar a palavra de %s.\n", nomeArquivo);
+            fclose(file);
+            return 0; // Retorna 0 se não conseguir ler uma palavra
+        }
+
+        fclose(file);
+    }
+    return NUM_FASES; // Retorna o número de fases carregadas com sucesso
+}
+
+
+// Função para gerar palavras aleatórias para as fases procedurais
+void gerarPalavraAleatoria(char palavra[]) {
+    const char *opcoes[] = {"banana", "abacaxi", "programa", "computador", "cachorro", 
+                            "gato", "jogador", "ciencia", "musica", "desafio"};
+    int totalOpcoes = sizeof(opcoes) / sizeof(opcoes[0]);
+    strcpy(palavra, opcoes[rand() % totalOpcoes]);
+}
+
+// Função para executar uma fase do jogo
+int jogarFase(char palavra[], int tempoLimite, Jogador *jogador) {
+    int tamanhoPalavra = strlen(palavra);
+    char letrasDescobertas[tamanhoPalavra];
+
+    for (int i = 0; i < tamanhoPalavra; i++) {
+        letrasDescobertas[i] = '_';
+    }
+
+    int tentativasRestantes = MAX_TENTATIVAS;
+    time_t tempoInicio = time(NULL);
+
+    while (tentativasRestantes > 0) {
+        time_t tempoDecorrido = time(NULL) - tempoInicio;
+        if (tempoLimite > 0 && tempoDecorrido > tempoLimite) {
+            printf("\nTempo esgotado! Você perdeu esta fase.\n");
+            return 0; // Jogador perdeu a fase
+        }
+
+        printf("\nFase: ");
+        mostrarPalavra(letrasDescobertas, tamanhoPalavra);
+        printf("Tentativas restantes: %d\n", tentativasRestantes);
+        if (tempoLimite > 0) {
+            printf("Tempo restante: %ld segundos\n", tempoLimite - tempoDecorrido);
+        }
+        printf("Digite uma letra: ");
+        
+        char letra;
+        scanf(" %c", &letra);
+        letra = tolower(letra);
+
+        if (tentarLetra(letra, palavra, letrasDescobertas, tamanhoPalavra)) {
+            printf("Você acertou a letra '%c'!\n", letra);
+        } else {
+            printf("A letra '%c' não está na palavra.\n", letra);
+            tentativasRestantes--;
+        }
+
+        if (palavraCompleta(letrasDescobertas, tamanhoPalavra)) {
+            printf("\nParabéns! Você adivinhou a palavra: %s\n", palavra);
+            jogador->placar += 20; // 20 pontos por fase
+            return 1; // Jogador venceu a fase
+        }
+    }
+
+    printf("\nVocê perdeu! A palavra era: %s\n", palavra);
+    return 0; // Jogador perdeu a fase
+}
+
+// Função principal do jogo
 void iniciarJogo() {
     Jogador jogador;
     printf("Digite seu nome: ");
     scanf("%s", jogador.nome);
-
     jogador.placar = 0;
 
-    // Lista de tempos para as fases
-    int tempos[NUM_FASES] = {90, 60, 30, 30, 30};  // Fase 3: 90s, Fase 4: 60s, Fase 5: 30s
+    char palavras[NUM_FASES][MAX_PALAVRA];
+    int numPalavrasCarregadas = carregarPalavras(palavras);
+    if (numPalavrasCarregadas < NUM_FASES) {
+        printf("Erro: Não há palavras suficientes no arquivo para as fases.\n");
+        return;
+    }
 
-    // Loop para as 5 fases
-    for (int fase = 0; fase < NUM_FASES; fase++) {
-        // O jogador pode digitar a palavra para cada fase
-        char palavra[MAX_NOME];
-        printf("\nDigite a palavra para a Fase %d (a palavra será oculta): ", fase + 1);
-        scanf("%s", palavra);
-
-        int tamanhoPalavra = strlen(palavra);
-
-        // Criar um array para armazenar as letras descobertas (inicialmente com '_')
-        char letrasDescobertas[tamanhoPalavra];
-        for (int i = 0; i < tamanhoPalavra; i++) {
-            letrasDescobertas[i] = '_';
-        }
-
-        int tentativasRestantes = MAX_TENTATIVAS;
-
-        // Informar ao jogador sobre o limite de tempo
-        if (fase >= 2) {
-            printf("\nA partir desta fase, você tem %d segundos para adivinhar a palavra.\n", tempos[fase]);
-        }
-
-        // Verificar se o limite de tempo deve ser ativado
-        time_t tempoInicio = 0, tempoDecorrido;
-
-        // Limpa o buffer para a próxima entrada
-        getchar();
-
-        // Loop do jogo para a fase
-        while (tentativasRestantes > 0) {
-            // A partir da fase 3, começa a contar o tempo
-            if (fase >= 2) {
-                if (tempoInicio == 0) {
-                    tempoInicio = time(NULL); // Inicia o tempo apenas na primeira tentativa
-                }
-
-                tempoDecorrido = time(NULL) - tempoInicio;
-
-                // Verifica se o tempo passou
-                if (tempoDecorrido > tempos[fase]) {
-                    printf("\nTempo esgotado! Você perdeu a fase.\n");
-                    salvarEstatisticas(jogador);
-                    return;
-                }
-            }
-
-            printf("\nFase %d: ", fase + 1);
-            mostrarPalavra(letrasDescobertas, tamanhoPalavra);
-            printf("Tentativas restantes: %d\n", tentativasRestantes);
-            if (fase >= 2) {
-                printf("Tempo restante: %ld segundos\n", tempos[fase] - tempoDecorrido);
-            }
-            printf("Digite uma letra: ");
-            
-            char letra;
-            scanf(" %c", &letra); // O espaço antes de %c é para consumir o caractere de nova linha
-
-            // Converte a letra para minúscula para comparar de forma consistente
-            letra = tolower(letra);
-
-            // Verificar se a letra foi correta
-            if (tentarLetra(letra, palavra, letrasDescobertas, tamanhoPalavra)) {
-                printf("Você acertou a letra '%c'!\n", letra);
-            } else {
-                tentativasRestantes--;
-                printf("A letra '%c' não está na palavra.\n", letra);
-            }
-
-            // Verificar se o jogador adivinhou toda a palavra
-            if (palavraCompleta(letrasDescobertas, tamanhoPalavra)) {
-                printf("\nParabéns, %s! Você adivinhou a palavra: %s\n", jogador.nome, palavra);
-                jogador.placar += 20;  // Exemplo de placar (20 pontos por fase)
-                break;
-            }
-        }
-
-        // Se o jogador não adivinhou a palavra, ele perdeu
-        if (tentativasRestantes == 0) {
-            printf("\nVocê perdeu na Fase %d! A palavra era: %s\n", fase + 1, palavra);
+    for (int i = 0; i < NUM_FASES; i++) {
+        printf("\n=== Fase %d ===\n", i + 1);
+        if (!jogarFase(palavras[i], 0, &jogador)) {
             salvarEstatisticas(jogador);
-            return;
+            return; // Jogador perdeu
         }
     }
 
-    // Se o jogador completou todas as fases
+    for (int i = 0; i < NUM_PROCEDURAL; i++) {
+        printf("\n=== Fase Procedural %d ===\n", i + 1);
+        char palavra[MAX_PALAVRA];
+        gerarPalavraAleatoria(palavra);
+        if (!jogarFase(palavra, 30, &jogador)) { // Tempo limite de 30 segundos
+            salvarEstatisticas(jogador);
+            return; // Jogador perdeu
+        }
+    }
+
     printf("\nParabéns, %s! Você completou todas as fases com %d pontos.\n", jogador.nome, jogador.placar);
     salvarEstatisticas(jogador);
 }
@@ -222,6 +239,7 @@ void exibirMenu() {
 }
 
 int main() {
+    srand(time(NULL)); // Inicializa a semente do gerador de números aleatórios
     exibirMenu();
     return 0;
 }

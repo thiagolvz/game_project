@@ -1,0 +1,5 @@
+gato
+cachorro
+peixe
+pássaro
+tigre
