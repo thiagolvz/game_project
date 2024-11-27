@@ -6,11 +6,8 @@
 
 #define MAX_TENTATIVAS 6
 #define MAX_NOME 100
-#define MAX_ESTATISTICAS 100
 #define ARQUIVO_ESTATS "estatisticas.bin"
 #define NUM_FASES 5
-#define MAX_PALAVRA 100
-#define NUM_PROCEDURAL 5
 
 // Estrutura para armazenar as informações do jogador
 typedef struct {
@@ -66,7 +63,7 @@ void mostrarEstatisticas(Jogador jogadorAtual) {
             struct tm *tm_info = localtime(&jogador.data);
             strftime(dataStr, 20, "%d/%m/%Y %H:%M:%S", tm_info);
 
-            printf("\n=== Estatísticas de %s ===\n", jogador.nome);
+            printf("\n=== Estatisticas de %s ===\n", jogador.nome);
             printf("Placar: %d | Data: %s\n", jogador.placar, dataStr);
             encontrou = 1;
         }
@@ -90,62 +87,71 @@ void salvarEstatisticas(Jogador jogador) {
 }
 
 // Função para carregar palavras de arquivos específicos para cada fase
-int carregarPalavras(char palavras[NUM_FASES][MAX_PALAVRA]) {
+int carregarPalavras(char ***palavras) {
+    *palavras = malloc(NUM_FASES * sizeof(char *)); // Aloca espaço para os ponteiros das palavras
+
+    if (*palavras == NULL) {
+        printf("Erro de alocacao de memoria para as palavras.\n");
+        return 0;
+    }
+
     for (int i = 0; i < NUM_FASES; i++) {
-        char nomeArquivo[MAX_PALAVRA];
-        snprintf(nomeArquivo, sizeof(nomeArquivo), "fase%d.txt", i + 1); // Cria o nome do arquivo (fase1.txt, fase2.txt, etc.)
+        char nomeArquivo[20];
+        snprintf(nomeArquivo, sizeof(nomeArquivo), "fase%d.txt", i + 1); // Cria o nome do arquivo
 
         FILE *file = fopen(nomeArquivo, "r");
         if (!file) {
-            printf("Erro: Não foi possível abrir o arquivo %s.\n", nomeArquivo);
+            printf("Erro: Nao foi possivel abrir o arquivo %s.\n", nomeArquivo);
             return 0; // Retorna 0 se algum arquivo não puder ser aberto
         }
 
-        if (fscanf(file, "%s", palavras[i]) != 1) {
-            printf("Erro: Não foi possível carregar a palavra de %s.\n", nomeArquivo);
+        (*palavras)[i] = malloc(100 * sizeof(char)); // Aloca espaço para cada palavra
+        if ((*palavras)[i] == NULL) {
+            printf("Erro de alocacao de memoria para a palavra da fase %d.\n", i + 1);
+            return 0;
+        }
+
+        if (fscanf(file, "%s", (*palavras)[i]) != 1) {
+            printf("Erro: Nao foi possivel carregar a palavra de %s.\n", nomeArquivo);
             fclose(file);
-            return 0; // Retorna 0 se não conseguir ler uma palavra
+            return 0;
         }
 
         fclose(file);
     }
-    return NUM_FASES; // Retorna o número de fases carregadas com sucesso
+
+    return NUM_FASES;
 }
 
-
-// Função para gerar palavras aleatórias para as fases procedurais
-void gerarPalavraAleatoria(char palavra[]) {
-    const char *opcoes[] = {"banana", "abacaxi", "programa", "computador", "cachorro", 
-                            "gato", "jogador", "ciencia", "musica", "desafio"};
-    int totalOpcoes = sizeof(opcoes) / sizeof(opcoes[0]);
-    strcpy(palavra, opcoes[rand() % totalOpcoes]);
+// Função para liberar memória das palavras
+void liberarPalavras(char **palavras, int numFases) {
+    for (int i = 0; i < numFases; i++) {
+        free(palavras[i]);
+    }
+    free(palavras);
 }
 
 // Função para executar uma fase do jogo
-int jogarFase(char palavra[], int tempoLimite, Jogador *jogador) {
+int jogarFase(char palavra[], Jogador *jogador) {
     int tamanhoPalavra = strlen(palavra);
-    char letrasDescobertas[tamanhoPalavra];
+    char *letrasDescobertas = malloc(tamanhoPalavra * sizeof(char)); // Aloca dinamicamente
+
+    if (letrasDescobertas == NULL) {
+        printf("Erro de alocacao de memoria para letras descobertas.\n");
+        return 0;
+    }
 
     for (int i = 0; i < tamanhoPalavra; i++) {
         letrasDescobertas[i] = '_';
     }
 
     int tentativasRestantes = MAX_TENTATIVAS;
-    time_t tempoInicio = time(NULL);
 
     while (tentativasRestantes > 0) {
-        time_t tempoDecorrido = time(NULL) - tempoInicio;
-        if (tempoLimite > 0 && tempoDecorrido > tempoLimite) {
-            printf("\nTempo esgotado! Você perdeu esta fase.\n");
-            return 0; // Jogador perdeu a fase
-        }
-
         printf("\nFase: ");
         mostrarPalavra(letrasDescobertas, tamanhoPalavra);
         printf("Tentativas restantes: %d\n", tentativasRestantes);
-        if (tempoLimite > 0) {
-            printf("Tempo restante: %ld segundos\n", tempoLimite - tempoDecorrido);
-        }
+
         printf("Digite uma letra: ");
         
         char letra;
@@ -153,21 +159,23 @@ int jogarFase(char palavra[], int tempoLimite, Jogador *jogador) {
         letra = tolower(letra);
 
         if (tentarLetra(letra, palavra, letrasDescobertas, tamanhoPalavra)) {
-            printf("Você acertou a letra '%c'!\n", letra);
+            printf("Voce acertou a letra '%c'!\n", letra);
         } else {
-            printf("A letra '%c' não está na palavra.\n", letra);
+            printf("A letra '%c' nao esta na palavra.\n", letra);
             tentativasRestantes--;
         }
 
         if (palavraCompleta(letrasDescobertas, tamanhoPalavra)) {
-            printf("\nParabéns! Você adivinhou a palavra: %s\n", palavra);
+            printf("\nParabens! Voce adivinhou a palavra: %s\n", palavra);
             jogador->placar += 20; // 20 pontos por fase
-            return 1; // Jogador venceu a fase
+            free(letrasDescobertas);
+            return 1;
         }
     }
 
-    printf("\nVocê perdeu! A palavra era: %s\n", palavra);
-    return 0; // Jogador perdeu a fase
+    printf("\nVoce perdeu! A palavra era: %s\n", palavra);
+    free(letrasDescobertas);
+    return 0;
 }
 
 // Função principal do jogo
@@ -177,33 +185,26 @@ void iniciarJogo() {
     scanf("%s", jogador.nome);
     jogador.placar = 0;
 
-    char palavras[NUM_FASES][MAX_PALAVRA];
-    int numPalavrasCarregadas = carregarPalavras(palavras);
+    char **palavras;
+    int numPalavrasCarregadas = carregarPalavras(&palavras);
     if (numPalavrasCarregadas < NUM_FASES) {
-        printf("Erro: Não há palavras suficientes no arquivo para as fases.\n");
+        printf("Erro: Não ha palavras suficientes no arquivo para as fases.\n");
+        liberarPalavras(palavras, numPalavrasCarregadas);
         return;
     }
 
     for (int i = 0; i < NUM_FASES; i++) {
         printf("\n=== Fase %d ===\n", i + 1);
-        if (!jogarFase(palavras[i], 0, &jogador)) {
+        if (!jogarFase(palavras[i], &jogador)) {
             salvarEstatisticas(jogador);
-            return; // Jogador perdeu
+            liberarPalavras(palavras, numPalavrasCarregadas);
+            return;
         }
     }
 
-    for (int i = 0; i < NUM_PROCEDURAL; i++) {
-        printf("\n=== Fase Procedural %d ===\n", i + 1);
-        char palavra[MAX_PALAVRA];
-        gerarPalavraAleatoria(palavra);
-        if (!jogarFase(palavra, 30, &jogador)) { // Tempo limite de 30 segundos
-            salvarEstatisticas(jogador);
-            return; // Jogador perdeu
-        }
-    }
-
-    printf("\nParabéns, %s! Você completou todas as fases com %d pontos.\n", jogador.nome, jogador.placar);
+    printf("\nParabens, %s! Voce completou todas as fases com %d pontos.\n", jogador.nome, jogador.placar);
     salvarEstatisticas(jogador);
+    liberarPalavras(palavras, numPalavrasCarregadas);
 }
 
 // Função para exibir o menu principal
@@ -213,9 +214,9 @@ void exibirMenu() {
     while (1) {
         printf("\n=== Menu Principal ===\n");
         printf("1. Iniciar Jogo\n");
-        printf("2. Estatísticas\n");
+        printf("2. Estatisticas\n");
         printf("0. Sair\n");
-        printf("Escolha uma opção: ");
+        printf("Escolha uma opcao: ");
         scanf("%d", &opcao);
 
         switch (opcao) {
@@ -224,7 +225,7 @@ void exibirMenu() {
                 break;
             case 2: {
                 Jogador jogadorAtual;
-                printf("Digite seu nome para ver suas estatísticas: ");
+                printf("Digite seu nome para ver suas estatisticas: ");
                 scanf("%s", jogadorAtual.nome);
                 mostrarEstatisticas(jogadorAtual);
                 break;
@@ -233,7 +234,7 @@ void exibirMenu() {
                 printf("Saindo do jogo...\n");
                 return;
             default:
-                printf("Opção inválida. Tente novamente.\n");
+                printf("Opcao invalida. Tente novamente.\n");
         }
     }
 }

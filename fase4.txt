@@ -1,4 +1,1 @@
 algoritmo
-variável
-compilador
-estrutura
